@@ -51,6 +51,8 @@
 #include "cmp_model.h"
 #include "prefetcher/l2l1pref.h"
 
+#include "dcache_measure.h"
+
 /**************************************************************************************/
 /* Macros */
 
@@ -111,6 +113,9 @@ void init_dcache_stage(uns8 proc_id, const char* name) {
                DCACHE_REPL);
 
   memset(dc->rand_wb_state, 0, NUM_ELEMENTS(dc->rand_wb_state));
+
+  /* init the hash table for measure */
+  dcache_measure_init();
 }
 
 
@@ -427,6 +432,13 @@ void update_dcache_stage(Stage_Data* src_sd) {
 
           if(!op->off_path) {
             STAT_EVENT(op->proc_id, DCACHE_MISS);
+
+            // collect 3C info
+            if (dcache_measure_examine(op->oracle_info.va))
+              STAT_EVENT(op->proc_id, DCACHE_MISS_CONFLICT);
+            else
+              STAT_EVENT(op->proc_id, DCACHE_MISS_COMPULSORY);
+
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD_ONPATH);
             op->oracle_info.dcmiss = TRUE;
@@ -482,6 +494,13 @@ void update_dcache_stage(Stage_Data* src_sd) {
 
           if(!op->off_path) {
             STAT_EVENT(op->proc_id, DCACHE_MISS);
+
+            // collect 3C info
+            if (dcache_measure_examine(op->oracle_info.va))
+              STAT_EVENT(op->proc_id, DCACHE_MISS_CONFLICT);
+            else
+              STAT_EVENT(op->proc_id, DCACHE_MISS_COMPULSORY);
+
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD_ONPATH);
             op->oracle_info.dcmiss = TRUE;
@@ -540,6 +559,13 @@ void update_dcache_stage(Stage_Data* src_sd) {
 
           if(!op->off_path) {
             STAT_EVENT(op->proc_id, DCACHE_MISS);
+
+            // collect 3C info
+            if (dcache_measure_examine(op->oracle_info.va))
+              STAT_EVENT(op->proc_id, DCACHE_MISS_CONFLICT);
+            else
+              STAT_EVENT(op->proc_id, DCACHE_MISS_COMPULSORY);
+
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ST_ONPATH);
             op->oracle_info.dcmiss = TRUE;
