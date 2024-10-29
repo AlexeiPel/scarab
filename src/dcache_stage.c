@@ -51,6 +51,8 @@
 #include "cmp_model.h"
 #include "prefetcher/l2l1pref.h"
 
+#include "dcache_measure.h"
+
 /**************************************************************************************/
 /* Macros */
 
@@ -111,6 +113,9 @@ void init_dcache_stage(uns8 proc_id, const char* name) {
                DCACHE_REPL);
 
   memset(dc->rand_wb_state, 0, NUM_ELEMENTS(dc->rand_wb_state));
+
+  /* init the hash table for measure */
+  dcache_measure_init(DCACHE_SIZE, DCACHE_LINE_SIZE);
 }
 
 
@@ -286,6 +291,10 @@ void update_dcache_stage(Stage_Data* src_sd) {
 
     line = (Dcache_Data*)cache_access(&dc->dcache, op->oracle_info.va,
                                       &line_addr, TRUE);
+
+    // collect cache info
+    dcache_measure_examine(op, op->oracle_info.va, line == NULL);
+
     op->dcache_cycle = cycle_count;
     dc->idle_cycle   = MAX2(dc->idle_cycle, cycle_count + DCACHE_CYCLES);
 
