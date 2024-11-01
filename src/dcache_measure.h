@@ -17,7 +17,7 @@ extern "C" {
 #include "op.h"
 
 void dcache_measure_init(int dcache_size);
-void dcache_measure_examine(Op *op, Addr line);
+void dcache_measure_examine(Op *op, Addr line_addr, Flag if_miss);
 
 #ifdef __cplusplus
 }

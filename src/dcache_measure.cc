@@ -48,28 +48,27 @@ typedef enum Cache_Miss_Type_enum {
 */
 
 // Reorders the fully associative cache to represent the LRU
-void update_LRU_on_cache_hit(Addr line) {
-  line = line >> OFFSET;
+static inline void update_LRU_on_cache_hit(Addr addr_line) {
+  addr_line = addr_line >> OFFSET;
   for (size_t i = 0; i < fully_assoc_cache.size(); i++)
   {
-    if (fully_assoc_cache[i] == line)
+    if (fully_assoc_cache[i] == addr_line)
     {
       fully_assoc_cache.erase(fully_assoc_cache.begin() + i);
       break;
     }
   }
-  fully_assoc_cache.push_back(line);
+  fully_assoc_cache.push_back(addr_line);
 }
 
-Cache_Miss_Type get_cache_miss_type(Addr line) {
+static inline Cache_Miss_Type get_cache_miss_type(Addr addr_line) {
   // Check if the addr has appeared before
-  std::bitset<32> line_entry{line};
-  if (!infinite_cache.count(line)) {
+  if (!infinite_cache.count(addr_line)) {
     // Insert into a hash map
-    infinite_cache.insert(line);
+    infinite_cache.insert(addr_line);
 
     // Add line_entry not line since we need to account for offset
-    fully_assoc_cache.push_back(line);
+    fully_assoc_cache.push_back(addr_line);
     if (fully_assoc_cache.size() > static_cast<size_t>(FULLY_ASSOC_DCACHE_SIZE))
       fully_assoc_cache.pop_front();
 
@@ -77,23 +76,15 @@ Cache_Miss_Type get_cache_miss_type(Addr line) {
   }
 
   for (size_t i = 0; i < fully_assoc_cache.size(); i++) {
-    if (fully_assoc_cache[i] == line)
+    if (fully_assoc_cache[i] == addr_line)
       return CACHE_MISS_TYPE_CONFLICT;
   }
 
   return CACHE_MISS_TYPE_CAPACITY;
 }
 
-/**************************************************************************************/
-/* Interface */
-
-void dcache_measure_init(int dcache_size) {
-  FULLY_ASSOC_DCACHE_SIZE = dcache_size;
-  OFFSET = log2(FULLY_ASSOC_DCACHE_SIZE);
-}
-
-void dcache_measure_examine(Op *op, Addr line) {
-  Cache_Miss_Type dcache_miss_type = get_cache_miss_type(op->oracle_info.va);
+static inline void update_cache_miss_stat(Op *op, Addr line_addr) {
+  Cache_Miss_Type dcache_miss_type = get_cache_miss_type(line_addr);
   switch(dcache_miss_type) {
     case CACHE_MISS_TYPE_COMPULSORY:
       STAT_EVENT(op->proc_id, DCACHE_MISS_COMPULSORY);
@@ -110,4 +101,17 @@ void dcache_measure_examine(Op *op, Addr line) {
     default:
       break;
   }
+}
+
+/**************************************************************************************/
+/* External Interface */
+
+void dcache_measure_init(int dcache_size) {
+  FULLY_ASSOC_DCACHE_SIZE = dcache_size;
+  OFFSET = log2(FULLY_ASSOC_DCACHE_SIZE);
+}
+
+void dcache_measure_examine(Op *op, Addr line_addr, Flag if_miss) {
+  if (if_miss)
+    update_cache_miss_stat(op, line_addr);
 }

@@ -292,6 +292,10 @@ void update_dcache_stage(Stage_Data* src_sd) {
     line = (Dcache_Data*)cache_access(&dc->dcache, op->oracle_info.va,
                                       &line_addr, TRUE);
 
+
+    // collect cache info
+    dcache_measure_examine(op, op->oracle_info.va, line == NULL);
+
     op->dcache_cycle = cycle_count;
     dc->idle_cycle   = MAX2(dc->idle_cycle, cycle_count + DCACHE_CYCLES);
 
@@ -434,9 +438,6 @@ void update_dcache_stage(Stage_Data* src_sd) {
           if(!op->off_path) {
             STAT_EVENT(op->proc_id, DCACHE_MISS);
 
-            // collect 3C info
-            dcache_measure_examine(op, op->oracle_info.va);
-
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD_ONPATH);
             op->oracle_info.dcmiss = TRUE;
@@ -492,9 +493,6 @@ void update_dcache_stage(Stage_Data* src_sd) {
 
           if(!op->off_path) {
             STAT_EVENT(op->proc_id, DCACHE_MISS);
-
-            // collect 3C info
-            dcache_measure_examine(op, op->oracle_info.va);
 
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD_ONPATH);
@@ -554,9 +552,6 @@ void update_dcache_stage(Stage_Data* src_sd) {
 
           if(!op->off_path) {
             STAT_EVENT(op->proc_id, DCACHE_MISS);
-
-            // collect 3C info
-            dcache_measure_examine(op, op->oracle_info.va);
 
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ST_ONPATH);
