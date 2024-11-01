@@ -11,7 +11,6 @@
 #include <vector>
 #include <deque>
 #include <unordered_set>
-#include <bitset>
 #include <bits/stdc++.h>
 
 extern "C" {
@@ -27,8 +26,8 @@ extern "C" {
 /**************************************************************************************/
 /* Structure */
 
-std::unordered_set<std::bitset<32>> infinite_cache;
-std::deque<std::bitset<32>> fully_assoc_cache;
+std::unordered_set<Addr> infinite_cache;
+std::deque<Addr> fully_assoc_cache;
 
 int FULLY_ASSOC_DCACHE_SIZE;
 int OFFSET;
@@ -50,29 +49,27 @@ typedef enum Cache_Miss_Type_enum {
 
 // Reorders the fully associative cache to represent the LRU
 void update_LRU_on_cache_hit(Addr line) {
-  std::bitset<32> line_entry{line};
-  line_entry = line_entry >> OFFSET;
+  line = line >> OFFSET;
   for (size_t i = 0; i < fully_assoc_cache.size(); i++)
   {
-    if (fully_assoc_cache[i] == line_entry)
+    if (fully_assoc_cache[i] == line)
     {
       fully_assoc_cache.erase(fully_assoc_cache.begin() + i);
       break;
     }
   }
-  fully_assoc_cache.push_back(line_entry);
+  fully_assoc_cache.push_back(line);
 }
 
 Cache_Miss_Type get_cache_miss_type(Addr line) {
   // Check if the addr has appeared before
   std::bitset<32> line_entry{line};
-  line_entry = line_entry >> OFFSET;
-  if (!infinite_cache.count(line_entry)) {
+  if (!infinite_cache.count(line)) {
     // Insert into a hash map
-    infinite_cache.insert(line_entry);
+    infinite_cache.insert(line);
 
     // Add line_entry not line since we need to account for offset
-    fully_assoc_cache.push_back(line_entry);
+    fully_assoc_cache.push_back(line);
     if (fully_assoc_cache.size() > static_cast<size_t>(FULLY_ASSOC_DCACHE_SIZE))
       fully_assoc_cache.pop_front();
 
@@ -80,7 +77,7 @@ Cache_Miss_Type get_cache_miss_type(Addr line) {
   }
 
   for (size_t i = 0; i < fully_assoc_cache.size(); i++) {
-    if (fully_assoc_cache[i] == line_entry)
+    if (fully_assoc_cache[i] == line)
       return CACHE_MISS_TYPE_CONFLICT;
   }
 
