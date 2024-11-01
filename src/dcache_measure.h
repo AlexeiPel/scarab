@@ -16,7 +16,7 @@ extern "C" {
 #include "globals/global_types.h"
 #include "op.h"
 
-void dcache_measure_init(int dcache_size);
+void dcache_measure_init(uns cache_size, uns line_size);
 void dcache_measure_examine(Op *op, Addr line_addr, Flag if_miss);
 
 #ifdef __cplusplus

@@ -115,7 +115,7 @@ void init_dcache_stage(uns8 proc_id, const char* name) {
   memset(dc->rand_wb_state, 0, NUM_ELEMENTS(dc->rand_wb_state));
 
   /* init the hash table for measure */
-  dcache_measure_init(DCACHE_SIZE);
+  dcache_measure_init(DCACHE_SIZE, DCACHE_LINE_SIZE);
 }
 
 

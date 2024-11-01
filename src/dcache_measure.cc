@@ -11,7 +11,6 @@
 #include <vector>
 #include <deque>
 #include <unordered_set>
-#include <bits/stdc++.h>
 
 extern "C" {
 #include "globals/assert.h"
@@ -29,8 +28,8 @@ extern "C" {
 std::unordered_set<Addr> infinite_cache;
 std::deque<Addr> fully_assoc_cache;
 
-int FULLY_ASSOC_DCACHE_SIZE;
-int OFFSET;
+uns FULLY_ASSOC_SIZE;
+uns FULLY_ASSOC_SHIFT;
 
 typedef enum Cache_Miss_Type_enum {
   CACHE_MISS_TYPE_COMPULSORY,
@@ -42,14 +41,14 @@ typedef enum Cache_Miss_Type_enum {
 /* Static Methods */
 
 /*
-  calculate the offset correctly. It'll be log_2(FULLY_ASSOC_DCACHE_SIZE) 
+  calculate the offset correctly. It'll be log_2(FULLY_ASSOC_SIZE) 
     - It's a fully associative set. Offset is just the index in the set
     - We should bitshift line by offset to get the tag to compare to in the set
 */
 
 // Reorders the fully associative cache to represent the LRU
 static inline void update_LRU_on_cache_hit(Addr addr_line) {
-  addr_line = addr_line >> OFFSET;
+  addr_line = addr_line >> FULLY_ASSOC_SHIFT;
   for (size_t i = 0; i < fully_assoc_cache.size(); i++)
   {
     if (fully_assoc_cache[i] == addr_line)
@@ -69,7 +68,7 @@ static inline Cache_Miss_Type get_cache_miss_type(Addr addr_line) {
 
     // Add line_entry not line since we need to account for offset
     fully_assoc_cache.push_back(addr_line);
-    if (fully_assoc_cache.size() > static_cast<size_t>(FULLY_ASSOC_DCACHE_SIZE))
+    if (fully_assoc_cache.size() > static_cast<size_t>(FULLY_ASSOC_SIZE))
       fully_assoc_cache.pop_front();
 
     return CACHE_MISS_TYPE_COMPULSORY;
@@ -106,12 +105,14 @@ static inline void update_cache_miss_stat(Op *op, Addr line_addr) {
 /**************************************************************************************/
 /* External Interface */
 
-void dcache_measure_init(int dcache_size) {
-  FULLY_ASSOC_DCACHE_SIZE = dcache_size;
-  OFFSET = log2(FULLY_ASSOC_DCACHE_SIZE);
+void dcache_measure_init(uns cache_size, uns line_size) {
+  FULLY_ASSOC_SIZE = cache_size / line_size;
+  FULLY_ASSOC_SHIFT = LOG2(FULLY_ASSOC_SIZE);
 }
 
 void dcache_measure_examine(Op *op, Addr line_addr, Flag if_miss) {
   if (if_miss)
     update_cache_miss_stat(op, line_addr);
+  else
+    update_LRU_on_cache_hit(line_addr);
 }
