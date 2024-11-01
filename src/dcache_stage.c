@@ -321,6 +321,7 @@ void update_dcache_stage(Stage_Data* src_sd) {
       }
     } else if(line) {  // data cache hit
 
+      update_LRU_on_cache_hit(op->oracle_info.va);
       if(PREF_FRAMEWORK_ON &&  // if framework is on use new prefetcher.
                                // otherwise old one
          (PREF_UPDATE_ON_WRONGPATH || !op->off_path)) {
