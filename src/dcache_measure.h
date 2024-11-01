@@ -16,8 +16,9 @@ extern "C" {
 #include "globals/global_types.h"
 #include "op.h"
 
-void dcache_measure_init(void);
-Flag dcache_measure_examine(Addr line);
+void dcache_measure_init(int dcache_size);
+void update_LRU_on_cache_hit(Addr line);
+int dcache_measure_examine(Addr line);
 
 #ifdef __cplusplus
 }

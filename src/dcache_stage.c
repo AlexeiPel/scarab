@@ -115,7 +115,7 @@ void init_dcache_stage(uns8 proc_id, const char* name) {
   memset(dc->rand_wb_state, 0, NUM_ELEMENTS(dc->rand_wb_state));
 
   /* init the hash table for measure */
-  dcache_measure_init();
+  dcache_measure_init(DCACHE_SIZE);
 }
 
 
@@ -434,10 +434,13 @@ void update_dcache_stage(Stage_Data* src_sd) {
             STAT_EVENT(op->proc_id, DCACHE_MISS);
 
             // collect 3C info
-            if (dcache_measure_examine(op->oracle_info.va))
+            int dcache_miss_type = dcache_measure_examine(op->oracle_info.va);
+            if (dcache_miss_type == 0)
+              STAT_EVENT(op->proc_id, DCACHE_MISS_COMPULSORY);
+            else if (dcache_miss_type == 1)
               STAT_EVENT(op->proc_id, DCACHE_MISS_CONFLICT);
             else
-              STAT_EVENT(op->proc_id, DCACHE_MISS_COMPULSORY);
+              STAT_EVENT(op->proc_id, DCACHE_MISS_CAPACITY);
 
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD_ONPATH);
