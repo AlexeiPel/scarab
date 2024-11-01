@@ -434,13 +434,7 @@ void update_dcache_stage(Stage_Data* src_sd) {
             STAT_EVENT(op->proc_id, DCACHE_MISS);
 
             // collect 3C info
-            int dcache_miss_type = dcache_measure_examine(op->oracle_info.va);
-            if (dcache_miss_type == 0)
-              STAT_EVENT(op->proc_id, DCACHE_MISS_COMPULSORY);
-            else if (dcache_miss_type == 1)
-              STAT_EVENT(op->proc_id, DCACHE_MISS_CONFLICT);
-            else
-              STAT_EVENT(op->proc_id, DCACHE_MISS_CAPACITY);
+            dcache_measure_examine(op, op->oracle_info.va);
 
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD_ONPATH);
@@ -499,10 +493,7 @@ void update_dcache_stage(Stage_Data* src_sd) {
             STAT_EVENT(op->proc_id, DCACHE_MISS);
 
             // collect 3C info
-            if (dcache_measure_examine(op->oracle_info.va))
-              STAT_EVENT(op->proc_id, DCACHE_MISS_CONFLICT);
-            else
-              STAT_EVENT(op->proc_id, DCACHE_MISS_COMPULSORY);
+            dcache_measure_examine(op, op->oracle_info.va);
 
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD_ONPATH);
@@ -564,10 +555,7 @@ void update_dcache_stage(Stage_Data* src_sd) {
             STAT_EVENT(op->proc_id, DCACHE_MISS);
 
             // collect 3C info
-            if (dcache_measure_examine(op->oracle_info.va))
-              STAT_EVENT(op->proc_id, DCACHE_MISS_CONFLICT);
-            else
-              STAT_EVENT(op->proc_id, DCACHE_MISS_COMPULSORY);
+            dcache_measure_examine(op, op->oracle_info.va);
 
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ST_ONPATH);
