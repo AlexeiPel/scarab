@@ -1873,6 +1873,34 @@ Cache_Entry* ship_update_evict(Cache* cache, uns8 proc_id, uns set, uns* way, vo
   return line;
 }
 
+
+/**************************************************************************************/
+/* SDBP */
+void sdbp_action_init(Cache* cache, const char* name, uns cache_size, uns assoc,
+  uns line_size, uns data_size, Repl_Policy repl_policy);
+void sdbp_update_hit(Cache* cache, uns set, uns way, void* arg);
+void sdbp_update_insert(Cache* cache, uns8 proc_id, uns set, uns way, void* arg);
+Cache_Entry* sdbp_update_evict(Cache* cache, uns8 proc_id, uns set, uns* way, void* arg, Flag if_external);
+
+void sdbp_action_init(Cache* cache, const char* name, uns cache_size, uns assoc,
+  uns line_size, uns data_size, Repl_Policy repl_policy)
+{
+  return;
+}
+
+void sdbp_update_hit(Cache* cache, uns set, uns way, void* arg) {
+  return;
+}
+
+void sdbp_update_insert(Cache* cache, uns8 proc_id, uns set, uns way, void* arg) {
+  return;
+}
+
+Cache_Entry* sdbp_update_evict(Cache* cache, uns8 proc_id, uns set, uns* way, void* arg, Flag if_external) {
+  return NULL;
+}
+
+
 /**************************************************************************************/
 /* Driven Table */
 struct repl_policy_func repl_policy_func_table[NUM_REPL] = {
@@ -1882,6 +1910,7 @@ struct repl_policy_func repl_policy_func_table[NUM_REPL] = {
   { REPL_BRRIP,   brrip_action_init,    general_action_repl,  nru_update_hit,     brrip_update_insert,  srrip_update_evict  },
   { REPL_DRRIP,   drrip_action_init,    general_action_repl,  nru_update_hit,     drrip_update_insert,  drrip_update_evict  },
   { REPL_SHIP,    ship_action_init,     general_action_repl,  ship_update_hit,    ship_update_insert,   ship_update_evict   },
+  { REPL_SDBP,    sdbp_action_init,     general_action_repl,  sdbp_update_hit,    sdbp_update_insert,   sdbp_update_evict   },
   { REPL_VOID,    NULL,                 NULL,                 NULL,               NULL,                 NULL                },
 };
 /**************************************************************************************/
