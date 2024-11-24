@@ -1873,6 +1873,127 @@ Cache_Entry* ship_update_evict(Cache* cache, uns8 proc_id, uns set, uns* way, vo
   return line;
 }
 
+
+/**************************************************************************************/
+/* SDBP */
+
+void sdbp_action_init(Cache* cache, const char* name, uns cache_size, uns assoc,
+  uns line_size, uns data_size, Repl_Policy repl_policy);
+void sdbp_update_hit(Cache* cache, uns set, uns way, void* arg);
+void sdbp_update_insert(Cache* cache, uns8 proc_id, uns set, uns way, void* arg);
+Cache_Entry* sdbp_update_evict(Cache* cache, uns8 proc_id, uns set, uns* way, void* arg, Flag if_external);
+uns64 sdbp_get_key(Cache* cache, uns set, uns way, void* arg);
+
+
+struct sdbp_hist_table {
+  Cache *sampler_table;
+  Hash_Table pred_table;
+};
+
+uns64 sdbp_get_key(Cache* cache, uns set, uns way, void* arg) {
+  return cache->entries[set][way].base;
+}
+
+const static uns CACHE_REPLSDBP_FACTOR = 16;
+
+void sdbp_action_init(Cache* cache, const char* name, uns cache_size, uns assoc,
+  uns line_size, uns data_size, Repl_Policy repl_policy) {
+  // init the cache
+  general_action_init(cache, name, cache_size, assoc, line_size, data_size, repl_policy);
+
+  // init the dead flag for each line
+  uns num_sets  = cache_size / line_size / assoc;
+  for (uns ii = 0; ii < num_sets; ii++) {
+    for (uns jj = 0; jj < assoc; jj++) {
+      cache->entries[ii][jj].outcome = FALSE;
+    }
+  }
+
+  // allocate the hist table
+  cache->predictor = malloc(sizeof(struct sdbp_hist_table));
+  struct sdbp_hist_table *sdbp_hist_table = (struct sdbp_hist_table *) cache->predictor;
+  init_hash_table(&sdbp_hist_table->pred_table, "cache repl sdbp shct", NODE_TABLE_SIZE, sizeof(Flag));
+
+  // init the sampler
+  sdbp_hist_table->sampler_table = malloc(sizeof(Cache));
+  general_action_init(sdbp_hist_table->sampler_table, name, cache_size,
+    assoc, line_size, data_size, REPL_LRU_REF);
+
+  // init the re-use flag for each line
+  num_sets  = num_sets / CACHE_REPLSDBP_FACTOR;
+  for (uns ii = 0; ii < num_sets; ii++) {
+    for (uns jj = 0; jj < assoc; jj++) {
+      sdbp_hist_table->sampler_table->entries[ii][jj].outcome = FALSE;
+    }
+  }
+}
+
+void sdbp_update_hit(Cache* cache, uns set, uns way, void* arg) {
+  // update the reference value as LRU, that is, promoting the line into the MRU position
+  lru_update_hit(cache, set, way, arg);
+
+  // get the dead bit by the hash table
+  struct sdbp_hist_table *sdbp_hist_table = (struct sdbp_hist_table *) cache->predictor;
+  uns64 hash_key = sdbp_get_key(cache, set, way, arg);
+  Flag *dead_bit = (Flag*)hash_table_access( &sdbp_hist_table->pred_table, hash_key);
+  if (dead_bit)
+    cache->entries[set][way].outcome = TRUE;
+
+  // only sample if it is in the corresponding sampler set
+  if (set % CACHE_REPLSDBP_FACTOR != 0)
+    return;
+  lru_update_hit(sdbp_hist_table->sampler_table, set, way, arg);
+  sdbp_hist_table->sampler_table->entries[set][way].outcome = TRUE;
+}
+
+void sdbp_update_insert(Cache* cache, uns8 proc_id, uns set, uns way, void* arg) {
+  // update the reference value as LRU, that is, inserting the line into the MRU position
+  lru_update_insert(cache, proc_id, set, way, arg);
+
+  // get the dead bit by the hash table
+  struct sdbp_hist_table *sdbp_hist_table = (struct sdbp_hist_table *) cache->predictor;
+  uns64 hash_key = sdbp_get_key(cache, set, way, arg);
+  Flag new_entry = FALSE;
+  Flag *dead_bit = (Flag*)hash_table_access_create(&sdbp_hist_table->pred_table,
+    hash_key, &new_entry);
+  if (new_entry)
+    dead_bit = 0;
+  if (dead_bit)
+    cache->entries[set][way].outcome = TRUE;
+
+  // only sample if it is in the corresponding sampler set
+  if (set % CACHE_REPLSDBP_FACTOR != 0)
+    return;
+  lru_update_insert(sdbp_hist_table->sampler_table, proc_id, set, way, arg);
+  sdbp_hist_table->sampler_table->entries[set][way].outcome = FALSE;
+}
+
+Cache_Entry* sdbp_update_evict(Cache* cache, uns8 proc_id, uns set, uns* way, void* arg, Flag if_external) {
+  // predict as dead if it is evicted and never re-used
+  struct sdbp_hist_table *sdbp_hist_table = (struct sdbp_hist_table *) cache->predictor;
+  if (set % CACHE_REPLSDBP_FACTOR == 0) {
+    lru_update_evict(sdbp_hist_table->sampler_table, proc_id, set, way, arg, if_external);
+    if (!cache->entries[set][*way].outcome) {
+      uns64 hash_key = sdbp_get_key(cache, set, *way, arg);
+      Flag *dead_bit = (Flag*)hash_table_access(&sdbp_hist_table->pred_table, hash_key);
+      if (dead_bit)
+        *dead_bit = TRUE;
+    }
+  }
+
+  // evict the block that is predicted as dead
+  for (uns ii = 0; ii < cache->assoc; ii++) {
+    if (cache->entries[set][ii].outcome) {
+      *way = ii;
+      return &cache->entries[set][*way];
+    }
+  }
+
+  // return the line in the LRU position
+  return lru_update_evict(cache, proc_id, set, way, arg, if_external);
+}
+
+
 /**************************************************************************************/
 /* Driven Table */
 struct repl_policy_func repl_policy_func_table[NUM_REPL] = {
@@ -1882,6 +2003,7 @@ struct repl_policy_func repl_policy_func_table[NUM_REPL] = {
   { REPL_BRRIP,   brrip_action_init,    general_action_repl,  nru_update_hit,     brrip_update_insert,  srrip_update_evict  },
   { REPL_DRRIP,   drrip_action_init,    general_action_repl,  nru_update_hit,     drrip_update_insert,  drrip_update_evict  },
   { REPL_SHIP,    ship_action_init,     general_action_repl,  ship_update_hit,    ship_update_insert,   ship_update_evict   },
+  { REPL_SDBP,    sdbp_action_init,     general_action_repl,  sdbp_update_hit,    sdbp_update_insert,   sdbp_update_evict   },
   { REPL_VOID,    NULL,                 NULL,                 NULL,               NULL,                 NULL                },
 };
 /**************************************************************************************/
