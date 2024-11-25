@@ -1882,22 +1882,57 @@ void sdbp_update_hit(Cache* cache, uns set, uns way, void* arg);
 void sdbp_update_insert(Cache* cache, uns8 proc_id, uns set, uns way, void* arg);
 Cache_Entry* sdbp_update_evict(Cache* cache, uns8 proc_id, uns set, uns* way, void* arg, Flag if_external);
 
+/* Signiture History Counter Table */
+struct sdbp_sampler {
+  Hash_Table            sdbp_hash;
+  Cache_Repl_Signiture  sdbp_key_tpye;
+};
+
 void sdbp_action_init(Cache* cache, const char* name, uns cache_size, uns assoc,
   uns line_size, uns data_size, Repl_Policy repl_policy)
 {
-  return;
+  general_action_init(cache, name, cache_size, assoc, line_size, data_size, repl_policy);
+
+  /* allocate history table */
+  cache->predictor = malloc(sizeof(struct sdbp_sampler));
+  struct sdbp_sampler *cache_sampler = (struct sdbp_sampler *) cache->predictor;
+  init_hash_table(&cache_sampler->sdbp_hash, "cache repl ship shct",
+    NODE_TABLE_SIZE, sizeof(Counter));
+  cache_sampler->sdbp_key_tpye = CACHE_REPL_SIGH_MEM;
+
+  /* init outcome and sign for each line */
+  for (int ii = 0; ii < cache_size / line_size / assoc; ii++) {
+    for(int jj = 0; jj < assoc; jj++) {
+      cache->entries[ii][jj].outcome = FALSE;
+    }
+  }
 }
 
 void sdbp_update_hit(Cache* cache, uns set, uns way, void* arg) {
-  return;
+  struct sdbp_sampler *cache_sampler = (struct sdbp_sampler *) cache->predictor;
+  Counter *cache_sampler_entry = (Counter*)hash_table_access(
+    &cache_sampler->sdbp_hash,
+    cache_repl_signiture(&cache->entries[set][way], cache_sampler->sdbp_key_tpye)
+  );
+  (*cache_sampler_entry)++;
+  lru_update_hit(cache, set, way, arg);
 }
 
 void sdbp_update_insert(Cache* cache, uns8 proc_id, uns set, uns way, void* arg) {
-  return;
+  Flag new_entry = FALSE;
+  struct sdbp_sampler *cache_sampler = (struct sdbp_sampler *) cache->predictor;
+  Counter *cache_sampler_entry = (Counter*)hash_table_access_create(
+    &cache_sampler->sdbp_hash,
+    cache_repl_signiture(&cache->entries[set][way], cache_sampler->sdbp_key_tpye),
+    &new_entry
+  );
+  if (new_entry)
+    *cache_sampler_entry = 0;
+  lru_update_insert(cache, proc_id, set, way, arg);
 }
 
 Cache_Entry* sdbp_update_evict(Cache* cache, uns8 proc_id, uns set, uns* way, void* arg, Flag if_external) {
-  return NULL;
+  return lru_update_evict(cache, proc_id, set, way, arg, if_external);
 }
 
 
