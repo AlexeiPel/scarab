@@ -1883,10 +1883,31 @@ void sdbp_update_insert(Cache* cache, uns8 proc_id, uns set, uns way, void* arg)
 Cache_Entry* sdbp_update_evict(Cache* cache, uns8 proc_id, uns set, uns* way, void* arg, Flag if_external);
 
 /* Signiture History Counter Table */
+typedef struct SDBP_Sampler_Entry {
+  uns16                 partial_tag;
+  uns16                 partial_pc;
+  Flag                  valid_bit;
+  uns8                  lru_bits;
+} SDBP_Sampler_Entry; 
+
 struct sdbp_sampler {
-  Hash_Table            sdbp_hash;
+  uns16                   factor; // How many sets 1 sampling set represents
+  uns8                   sdbp_hash[3][4096]; // predictor
+  SDBP_Sampler_Entry    sampler_table[32][12]; // 32 set 12 way sampler table
   Cache_Repl_Signiture  sdbp_key_tpye;
 };
+
+// Provides 3 indices to hash into predictor using partial PC
+void hash(uns16 num, uns16* index_results) {
+    for (int i = 0; i < 3; i++)
+    {
+        uns16 x = num + (i * 0x45d9f3b);
+        x = ((x >> 8) ^ x) * 0x45d9f3b;
+        x = ((x >> 8) ^ x) * 0x45d9f3b;
+        x = (x >> 8) ^ x;
+        index_results[i] = x % 4096;
+    }
+}
 
 void sdbp_action_init(Cache* cache, const char* name, uns cache_size, uns assoc,
   uns line_size, uns data_size, Repl_Policy repl_policy)
@@ -1896,6 +1917,8 @@ void sdbp_action_init(Cache* cache, const char* name, uns cache_size, uns assoc,
   /* allocate history table */
   cache->predictor = malloc(sizeof(struct sdbp_sampler));
   struct sdbp_sampler *cache_sampler = (struct sdbp_sampler *) cache->predictor;
+  cache_sampler->factor = (cache->num_sets)/32;
+
   init_hash_table(&cache_sampler->sdbp_hash, "cache repl ship shct",
     NODE_TABLE_SIZE, sizeof(Counter));
   cache_sampler->sdbp_key_tpye = CACHE_REPL_SIGH_MEM;
@@ -1908,30 +1931,122 @@ void sdbp_action_init(Cache* cache, const char* name, uns cache_size, uns assoc,
   }
 }
 
+
 void sdbp_update_hit(Cache* cache, uns set, uns way, void* arg) {
   struct sdbp_sampler *cache_sampler = (struct sdbp_sampler *) cache->predictor;
-  Counter *cache_sampler_entry = (Counter*)hash_table_access(
-    &cache_sampler->sdbp_hash,
-    cache_repl_signiture(&cache->entries[set][way], cache_sampler->sdbp_key_tpye)
-  );
-  (*cache_sampler_entry)++;
+  uns16 entry_partial_pc = 12345 >> 1; // Replace with partial PC of cache->entries[set][way]
+  uns16 entry_partial_tag = way >> 1; // 15 bit partial tag
+
+  int prediction_indices[3];
+  int prediction = 0;
+  hash(entry_partial_pc, &prediction_indices);
+
+  if (set % cache_sampler->factor == 0)
+  {
+    int sample_index = set / cache_sampler->factor;
+    SDBP_Sampler_Entry* sample_set[] = cache_sampler->sampler_table[sample_index];
+    Flag found = FALSE;
+    for (int i = 0; i < 12; i++)
+    {
+      if (sample_set[i]->partial_tag == entry_partial_tag)
+      {
+        found = TRUE;
+        sample_set[i]->partial_pc = entry_partial_pc;
+      }
+    }
+    if (!found)
+    {
+      // TODO: Insert partial tag and partial pc into cache_sampler->sample_set using LRU
+      // 1. Evict if necessary
+      // 2. Insert
+    }
+
+    // Update prediction values for newly inserted entry
+    for (int i = 0; i < 3; i++)
+    {
+      if (cache_sampler->sdbp_hash[i][prediction_indices[i]] > 0)
+      {
+        cache_sampler->sdbp_hash[i][prediction_indices[i]]--;
+      }    
+    }
+  }
+
   lru_update_hit(cache, set, way, arg);
+
+  for (int i = 0; i < 3; i++)
+  {
+    prediction += cache_sampler->sdbp_hash[i][prediction_indices[i]];
+  }
+  if (prediction < 8) // Cut off point
+  {
+    cache->entries[set][way].outcome = FALSE;
+  }
 }
 
 void sdbp_update_insert(Cache* cache, uns8 proc_id, uns set, uns way, void* arg) {
-  Flag new_entry = FALSE;
   struct sdbp_sampler *cache_sampler = (struct sdbp_sampler *) cache->predictor;
-  Counter *cache_sampler_entry = (Counter*)hash_table_access_create(
-    &cache_sampler->sdbp_hash,
-    cache_repl_signiture(&cache->entries[set][way], cache_sampler->sdbp_key_tpye),
-    &new_entry
-  );
-  if (new_entry)
-    *cache_sampler_entry = 0;
+  uns16 entry_partial_pc = 12345 >> 1; // Replace with partial PC of cache->entries[set][way]
+  uns16 entry_partial_tag = way >> 1; // 15 bit partial tag
+
+  int prediction_indices[3];
+  int prediction = 0;
+  hash(entry_partial_pc, &prediction_indices);
+
+  if (set % cache_sampler-> factor == 0)
+  {
+    int sample_index = set / cache_sampler->factor;
+    SDBP_Sampler_Entry* sample_set[] = cache_sampler->sampler_table[sample_index];
+    Flag found = FALSE;
+    for (int i = 0; i < 12; i++)
+    {
+      if (sample_set[i]->partial_tag == entry_partial_tag)
+      {
+        found = TRUE;
+        sample_set[i]->partial_pc = entry_partial_pc;
+      }
+    }
+    if (!found)
+    {
+      // TODO: Insert partial tag and partial pc into cache_sampler->sample_set using LRU
+      // 1. Evict if necessary
+      // 2. Insert
+    }
+
+    // Update prediction values for newly inserted entry
+    for (int i = 0; i < 3; i++)
+    {
+      if (cache_sampler->sdbp_hash[i][prediction_indices[i]] < 4)
+      {
+        cache_sampler->sdbp_hash[i][prediction_indices[i]]++;
+      }    
+    }
+  }
+  
   lru_update_insert(cache, proc_id, set, way, arg);
+
+  for (int i = 0; i < 3; i++)
+  {
+    prediction += cache_sampler->sdbp_hash[i][prediction_indices[i]];
+  }
+  if (prediction >= 8) // Cut off point
+  {
+    cache->entries[set][way].outcome = TRUE;
+  }
 }
 
 Cache_Entry* sdbp_update_evict(Cache* cache, uns8 proc_id, uns set, uns* way, void* arg, Flag if_external) {
+  struct sdbp_sampler *cache_sampler = (struct sdbp_sampler *) cache->predictor;
+  Cache_Entry* cache_entries[] = cache->entries[set];
+  for (int ii = 0; ii < cache->assoc; ii++)
+  {
+    if (cache_entries[ii]->outcome)
+    {
+      way == ii;
+      cache_debug_print_set(cache, set, *way, CACHE_EVENT_EVICT);
+      return &cache->entries[set][*way];
+    }
+  }
+
   return lru_update_evict(cache, proc_id, set, way, arg, if_external);
 }
 
