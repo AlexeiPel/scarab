@@ -2051,9 +2051,9 @@ void sdbp_update_insert(Cache* cache, uns8 proc_id, uns set, uns way, void* arg)
     // Update prediction values for newly inserted entry
     for (int i = 0; i < 3; i++)
     {
-      if (cache_sampler->sdbp_hash[i][prediction_indices[i]] > 0)
+      if (cache_sampler->sdbp_hash[i][prediction_indices[i]] < 5)
       {
-        cache_sampler->sdbp_hash[i][prediction_indices[i]]--;
+        cache_sampler->sdbp_hash[i][prediction_indices[i]]++;
       }    
     }
   }
