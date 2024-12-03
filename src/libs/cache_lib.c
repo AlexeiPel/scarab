@@ -1891,8 +1891,8 @@ typedef struct SDBP_Sampler_Entry {
 } SDBP_Sampler_Entry; 
 
 struct sdbp_sampler {
-  uns16                   factor; // How many sets 1 sampling set represents
-  uns8                   sdbp_hash[3][4096]; // predictor
+  uns16                 factor; // How many sets 1 sampling set represents
+  uns8                  sdbp_hash[3][4096]; // predictor
   SDBP_Sampler_Entry    sampler_table[32][12]; // 32 set 12 way sampler table
   Cache_Repl_Signiture  sdbp_key_tpye;
 };
@@ -1907,6 +1907,58 @@ void hash(uns16 num, uns16* index_results) {
         x = (x >> 8) ^ x;
         index_results[i] = x % 4096;
     }
+}
+
+void sdbp_sample_set_update(SDBP_Sampler_Entry* sample_set, SDBP_Sampler_Entry* insert)
+{
+  /*
+    In order. If previous attempt to insert fails then try new idea:
+    1. If partial tag is already in set then replace that entry
+    2. Else if there are any invalid entries replace them
+    3. Else LRU replacement
+    Then do aging
+  */
+  Flag done = FALSE;
+  for (int i = 0; i < 12; i++)
+    {
+      if (!done && (sample_set + i)->partial_tag == insert->partial_tag)
+      {
+        done = TRUE;
+        *(sample_set + i) = *insert;
+      }
+    }
+
+  for (int i = 0; i < 12; i++)
+  {
+    if(!done && (sample_set + i)->valid_bit)
+    {
+      done = TRUE;
+      *(sample_set + i) = *insert;
+    }
+  }
+
+  uns8 oldest = -1;
+  uns8 oldest_age = -1;
+  for (int i = 0; i < 12; i++)
+  {
+    if(!done && (sample_set + i)->lru_bits > oldest_age)
+    {
+      oldest = i;
+      oldest_age = (sample_set + i)->lru_bits;
+    }
+  }
+  if (!done)
+  {
+    *(sample_set + oldest) = *insert;
+  }
+
+  for (int i = 0; i < 12; i++)
+  {
+    if (i != oldest)
+    {
+      (sample_set + i)->lru_bits += 1;
+    }
+  }
 }
 
 void sdbp_action_init(Cache* cache, const char* name, uns cache_size, uns assoc,
@@ -1943,23 +1995,15 @@ void sdbp_update_hit(Cache* cache, uns set, uns way, void* arg) {
 
   if (set % cache_sampler->factor == 0)
   {
+    SDBP_Sampler_Entry sampler_entry;
+    sampler_entry.partial_tag = entry_partial_tag;
+    sampler_entry.partial_pc = entry_partial_pc;
+    sampler_entry.valid_bit = TRUE;
+    sampler_entry.lru_bits = 0;
     int sample_index = set / cache_sampler->factor;
     SDBP_Sampler_Entry* sample_set[] = cache_sampler->sampler_table[sample_index];
-    Flag found = FALSE;
-    for (int i = 0; i < 12; i++)
-    {
-      if (sample_set[i]->partial_tag == entry_partial_tag)
-      {
-        found = TRUE;
-        sample_set[i]->partial_pc = entry_partial_pc;
-      }
-    }
-    if (!found)
-    {
-      // TODO: Insert partial tag and partial pc into cache_sampler->sample_set using LRU
-      // 1. Evict if necessary
-      // 2. Insert
-    }
+
+    sdbp_sample_set_update(&sample_set, &sampler_entry);
 
     // Update prediction values for newly inserted entry
     for (int i = 0; i < 3; i++)
@@ -1994,30 +2038,22 @@ void sdbp_update_insert(Cache* cache, uns8 proc_id, uns set, uns way, void* arg)
 
   if (set % cache_sampler-> factor == 0)
   {
+    SDBP_Sampler_Entry sampler_entry;
+    sampler_entry.partial_tag = entry_partial_tag;
+    sampler_entry.partial_pc = entry_partial_pc;
+    sampler_entry.valid_bit = TRUE;
+    sampler_entry.lru_bits = 0;
     int sample_index = set / cache_sampler->factor;
     SDBP_Sampler_Entry* sample_set[] = cache_sampler->sampler_table[sample_index];
-    Flag found = FALSE;
-    for (int i = 0; i < 12; i++)
-    {
-      if (sample_set[i]->partial_tag == entry_partial_tag)
-      {
-        found = TRUE;
-        sample_set[i]->partial_pc = entry_partial_pc;
-      }
-    }
-    if (!found)
-    {
-      // TODO: Insert partial tag and partial pc into cache_sampler->sample_set using LRU
-      // 1. Evict if necessary
-      // 2. Insert
-    }
+
+    sdbp_sample_set_update(&sample_set, &sampler_entry);
 
     // Update prediction values for newly inserted entry
     for (int i = 0; i < 3; i++)
     {
-      if (cache_sampler->sdbp_hash[i][prediction_indices[i]] < 4)
+      if (cache_sampler->sdbp_hash[i][prediction_indices[i]] > 0)
       {
-        cache_sampler->sdbp_hash[i][prediction_indices[i]]++;
+        cache_sampler->sdbp_hash[i][prediction_indices[i]]--;
       }    
     }
   }
